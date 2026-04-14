@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>STG – Gestión de Equipos Enroll</title>
+  <title>STG – Gestión de Equipos</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
   <style>
@@ -103,6 +103,13 @@
     .success-box p{font-size:15px;color:var(--text-muted);line-height:1.6;}
     .countdown{font-family:'Sora',sans-serif;font-size:13px;color:var(--stg-accent);margin-top:18px;}
 
+
+    /* ── Sección 3: grid de tarjetas devolución ── */
+    .tarjetas-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:4px;}
+    .total-tarjetas-box{display:flex;align-items:center;justify-content:space-between;background:rgba(74,85,104,.08);border:1px solid rgba(74,85,104,.20);border-radius:var(--radius-sm);padding:14px 20px;margin-bottom:20px;}
+    .total-label{font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;}
+    .total-value{font-family:'Sora',sans-serif;font-size:26px;font-weight:700;color:var(--text);min-width:60px;text-align:right;}
+    @media(max-width:480px){.tarjetas-grid{grid-template-columns:1fr;}}
     /* ── CORRECCIONES RESPONSIVE ── */
     @media(max-width:768px){
       header{padding:18px 28px;}
@@ -214,9 +221,19 @@
         <div class="eq-item"><label>Estado</label><div class="val" style="color:var(--warning);" id="dev-estado">ACTIVO</div></div>
       </div>
     </div>
-    <div class="form-group">
-      <label for="inp-tarjetas-dev">Cantidad de Tarjetas Devueltas</label>
-      <input type="number" id="inp-tarjetas-dev" min="0" placeholder="Ingrese cantidad" />
+    <div class="tarjetas-grid">
+      <div class="form-group">
+        <label for="inp-tarjetas-nousadas">Tarjetas No Utilizadas</label>
+        <input type="number" id="inp-tarjetas-nousadas" min="0" placeholder="0" />
+      </div>
+      <div class="form-group">
+        <label for="inp-tarjetas-error">Tarjetas Error</label>
+        <input type="number" id="inp-tarjetas-error" min="0" placeholder="0" />
+      </div>
+    </div>
+    <div class="total-tarjetas-box">
+      <span class="total-label">Total Tarjetas Entregadas</span>
+      <span class="total-value" id="total-tarjetas-dev">0</span>
     </div>
     <div class="form-group">
       <label for="inp-obs">Observaciones</label>
@@ -248,7 +265,7 @@
   // ══════════════════════════════════════════════
   //  CONFIG – reemplaze con su URL de Apps Script
   // ══════════════════════════════════════════════
-  const API_URL = 'https://script.google.com/macros/s/AKfycbwjh-45voymKC8cAvD_Vy_SyH5QPTMBd0xyt_9-xHSevRXsbGZhO3O0nWmXpHThB3r89w/exec';
+  const API_URL = 'https://script.google.com/macros/s/AKfycbz1pmnsus44dYXFOu7k4V-ZShRfAWL0-6WNAGBZXg5KiVar86kF4d-J42r5yVd8cq2PGg/exec';
 
   let state = { selectedUser: null, registroActivo: null };
   const $ = id => document.getElementById(id);
@@ -369,7 +386,7 @@
   $('btn-sec1').addEventListener('click', async function() {
     setLoading(this, true);
     try {
-      const data = await api('checkEstado', { id_usuario: state.selectedUser.id });
+      const data = await api('checkEstado', { id_usuario: String(state.selectedUser.id) });
 
       if (data.estado === 'ACTIVO') {
         state.registroActivo = data.registro;
@@ -409,9 +426,20 @@
 
   $('btn-sec2').addEventListener('click', async function() {
     setLoading(this, true);
+    // ── Doble verificación: confirmar que usuario sigue sin ACTIVO ──
+    try {
+      const recheck = await api('checkEstado', { id_usuario: state.selectedUser.id });
+      if (recheck.estado === 'ACTIVO') {
+        showAlert('danger', 'Este usuario ya tiene un equipo asignado. Recargue la página.');
+        disableSection('sec2');
+        setLoading(this, false);
+        return;
+      }
+    } catch(e) { /* continuar si falla el recheck */ }
+
     const eqOpt = $('sel-equipo').options[$('sel-equipo').selectedIndex];
     const payload = {
-      id_usuario:    state.selectedUser.id,
+      id_usuario:    String(state.selectedUser.id),
       apellidos:     state.selectedUser.apellidos,
       nombres:       state.selectedUser.nombres,
       id_equipo:     $('sel-equipo').value,
@@ -440,10 +468,23 @@
     $('dev-fecha').textContent         = reg.FECHA_ASIGNACION          || '—';
     $('dev-hora').textContent          = reg.HORA_ASIGNACION           || '—';
     $('dev-estado').textContent        = reg.ESTADO                    || 'ACTIVO';
-    $('inp-tarjetas-dev').max          = reg.CANTIDAD_TARJETAS         || 9999;
+    // Los campos de devolución se limpian al cargar la sección
+    $('inp-tarjetas-nousadas').value = '';
+    $('inp-tarjetas-error').value    = '';
+    $('total-tarjetas-dev').textContent = '0';
   }
 
-  $('inp-tarjetas-dev').addEventListener('input', checkSec3);
+  function calcularTotal() {
+    const noUsadas = Number($('inp-tarjetas-nousadas').value) || 0;
+    const error    = Number($('inp-tarjetas-error').value)    || 0;
+    const total    = noUsadas + error;
+    $('total-tarjetas-dev').textContent = total;
+    return total;
+  }
+
+  $('inp-tarjetas-nousadas').addEventListener('input', function() { calcularTotal(); checkSec3(); });
+  $('inp-tarjetas-error').addEventListener('input',    function() { calcularTotal(); checkSec3(); });
+
   $('inp-obs').addEventListener('input', function() {
     const words = this.value.trim().split(/\s+/).filter(w=>w).length;
     const wc = $('word-count');
@@ -453,17 +494,23 @@
   });
 
   function checkSec3() {
-    const dev   = $('inp-tarjetas-dev').value;
-    const words = $('inp-obs').value.trim().split(/\s+/).filter(w=>w).length;
-    $('btn-sec3').disabled = !(dev !== '' && Number(dev) >= 0 && words <= 200);
+    const noUsadas = $('inp-tarjetas-nousadas').value;
+    const error    = $('inp-tarjetas-error').value;
+    const words    = $('inp-obs').value.trim().split(/\s+/).filter(w=>w).length;
+    // Habilitar si al menos uno de los campos tiene valor >= 0 y palabras OK
+    const camposOk = (noUsadas !== '' || error !== '') && words <= 200;
+    $('btn-sec3').disabled = !camposOk;
   }
 
   $('btn-sec3').addEventListener('click', async function() {
     setLoading(this, true);
+    const total = calcularTotal();
     const payload = {
-      id_usuario:         state.selectedUser.id,
-      tarjetas_devueltas: $('inp-tarjetas-dev').value,
-      observacion:        $('inp-obs').value,
+      id_usuario:            String(state.selectedUser.id),
+      tarjetas_no_usadas:    $('inp-tarjetas-nousadas').value || '0',
+      tarjetas_error:        $('inp-tarjetas-error').value    || '0',
+      tarjetas_devueltas:    String(total),
+      observacion:           $('inp-obs').value,
     };
     try {
       await api('registrarDevolucion', payload);

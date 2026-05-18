@@ -159,6 +159,10 @@
     </div>
     <div id="user-info-panel" style="display:none;">
       <div class="user-info-grid">
+        <div class="info-item" style="grid-column:1/-1;">
+          <label>ID Usuario (verificar ceros iniciales)</label>
+          <div class="info-value" id="u-id-display" style="font-family:'Courier New',monospace;font-size:18px;font-weight:700;letter-spacing:.08em;color:var(--stg-accent);">—</div>
+        </div>
         <div class="info-item"><label>Apellidos</label><div class="info-value" id="u-apellidos">—</div></div>
         <div class="info-item"><label>Nombres</label><div class="info-value" id="u-nombres">—</div></div>
         <div class="info-item"><label>Cargo</label><div class="info-value" id="u-cargo">—</div></div>
@@ -265,7 +269,7 @@
   // ══════════════════════════════════════════════
   //  CONFIG – reemplaze con su URL de Apps Script
   // ══════════════════════════════════════════════
-  const API_URL = 'https://script.google.com/macros/s/AKfycbz1pmnsus44dYXFOu7k4V-ZShRfAWL0-6WNAGBZXg5KiVar86kF4d-J42r5yVd8cq2PGg/exec';
+  const API_URL = 'https://script.google.com/macros/s/AKfycbygEgZs6iMfpkUbqcagpLFQ4Ocvxp9gcd7LORQeeR2xkS88XVSLZyYnHw0mF8aheFL3MQ/exec';
 
   let state = { selectedUser: null, registroActivo: null };
   const $ = id => document.getElementById(id);
@@ -321,7 +325,9 @@
       const selUser = $('sel-user');
       users.forEach(u => {
         const opt = document.createElement('option');
-        opt.value = u.ID_USUARIO;
+        // Forzar string: guardar con comilla invisible para que
+        // URLSearchParams no lo trate como número
+        opt.value = String(u.ID_USUARIO);
         opt.textContent = `${u.ID_USUARIO} – ${u.APELLIDOS} ${u.NOMBRES}`;
         opt.dataset.apellidos = u.APELLIDOS;
         opt.dataset.nombres   = u.NOMBRES;
@@ -373,8 +379,11 @@
       $('u-nombres').textContent   = opt.dataset.nombres   || '—';
       $('u-cargo').textContent     = opt.dataset.cargo     || '—';
       $('u-sistema').textContent   = opt.dataset.sistema   || '—';
+      // Mostrar el ID exacto (con ceros) para confirmación visual
+      const idDisplay = document.getElementById('u-id-display');
+      if (idDisplay) idDisplay.textContent = String(this.value).trim();
       $('user-info-panel').style.display = 'block';
-      state.selectedUser = { id: this.value, ...opt.dataset };
+      state.selectedUser = { id: String(this.value).trim(), ...opt.dataset };
     } else {
       $('user-info-panel').style.display = 'none';
       state.selectedUser = null;

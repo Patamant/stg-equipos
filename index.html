@@ -376,7 +376,7 @@
   // ══════════════════════════════════════════════
   //  CONFIG
   // ══════════════════════════════════════════════
-  const API_URL    = 'https://script.google.com/macros/s/AKfycbzKKHkiLY4nZRGTk8dqKajvUNXiHzfrhUnHsvT5xFBBk3BmtJOhPeIWadrFdOdvEgc/exec';
+  const API_URL    = 'https://script.google.com/macros/s/AKfycby_u4Ox-2amK5Q2U6fxFhwt7rfPtEiUNwyPXNcMEG5iY-t7LZ0FR3hZo3UI2_uZzMlTiw/exec';
   // Token de seguridad: debe coincidir con APP_TOKEN en Code.gs
   const APP_TOKEN  = 'STG_2025_SEC';
 
@@ -419,12 +419,25 @@
   }
 
   async function api(action, payload={}) {
-    // M-02: incluir token en cada petición para que el backend lo valide
     const params = new URLSearchParams({ action, _tk: APP_TOKEN, ...payload });
-    const r = await fetch(`${API_URL}?${params}`);
-    if (!r.ok) throw new Error('Error de red');
-    const data = await r.json();
-    if (data.error) throw new Error(data.error);
+    let r;
+    try {
+      r = await fetch(`${API_URL}?${params}`);
+    } catch(netErr) {
+      throw new Error('Sin conexión a internet o URL inaccesible.');
+    }
+    if (!r.ok) throw new Error('Error HTTP ' + r.status);
+    let data;
+    try {
+      data = await r.json();
+    } catch(jsonErr) {
+      throw new Error('Respuesta inválida del servidor.');
+    }
+    // Si el backend rechaza por token → mensaje específico
+    if (data && data.error === 'No autorizado.') {
+      throw new Error('TOKEN_INVALIDO');
+    }
+    if (data && data.error) throw new Error(data.error);
     return data;
   }
 
@@ -447,22 +460,34 @@
   //  INIT – cargar usuarios y equipos disponibles
   // ══════════════════════════════════════════════
   async function init() {
+    // Llamadas independientes: si una falla no bloquea las demás
+    let errores = [];
+
     try {
-      // Cargamos usuarios, equipos y equipos activos en paralelo
-      const [todosEquipos, equiposActivos, ubicaciones] = await Promise.all([
-        api('getEquipos'),
-        api('getEquiposActivos'),
-        api('getUbicaciones')
-      ]);
-
-      // Guardar en variables locales del closure
-      _equiposActivos = new Set(equiposActivos.map(e => String(e.ID_EQUIPO)));
-      _todosEquipos   = todosEquipos;
-      _ubicaciones    = ubicaciones;
-
-    } catch(err) {
-      showAlert('danger', 'No se pudo conectar con el servidor. Verifique la URL de Apps Script.');
+      const equipos = await api('getEquipos');
+      _todosEquipos = equipos || [];
+    } catch(e) {
+      errores.push('equipos');
+      if (e.message === 'TOKEN_INVALIDO') errores.push('token');
     }
+
+    try {
+      const activos = await api('getEquiposActivos');
+      _equiposActivos = new Set((activos || []).map(e => String(e.ID_EQUIPO)));
+    } catch(e) { _equiposActivos = new Set(); }
+
+    try {
+      const ubics = await api('getUbicaciones');
+      _ubicaciones = ubics || [];
+    } catch(e) { _ubicaciones = []; }
+
+    // Mostrar error específico según el tipo de fallo
+    if (errores.includes('token')) {
+      showAlert('danger', 'Error de autenticación: el token del servidor no coincide. Verifique APP_TOKEN en Code.gs y haga un nuevo deploy.');
+    } else if (errores.includes('equipos')) {
+      showAlert('danger', 'No se pudo conectar con el servidor. Verifique que: 1) La URL de Apps Script es correcta, 2) El deploy está publicado como "Cualquier persona".');
+    }
+
     // Garantizar que solo sec1 está visible al cargar
     ['sec2','sec3'].forEach(s => {
       $(s).classList.add('disabled');

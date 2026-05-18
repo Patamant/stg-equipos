@@ -46,7 +46,9 @@
     .section-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:32px;margin-bottom:20px;transition:var(--transition);position:relative;overflow:hidden;}
     .section-card::before{content:'';position:absolute;top:0;left:0;width:4px;height:100%;background:linear-gradient(180deg,#718096,var(--stg-accent));border-radius:4px 0 0 4px;opacity:0;transition:var(--transition);}
     .section-card.active::before{opacity:1;}
-    .section-card.disabled{opacity:.45;pointer-events:none;filter:saturate(.3);}
+    .section-card.disabled{display:none;}
+    .section-card.active{display:block;animation:fadeSlideIn .35s cubic-bezier(.4,0,.2,1);}
+    @keyframes fadeSlideIn{from{opacity:0;transform:translateY(14px);}to{opacity:1;transform:translateY(0);}}
     .section-header{display:flex;align-items:center;gap:14px;margin-bottom:28px;}
     .section-num{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#4A5568,#718096);display:flex;align-items:center;justify-content:center;font-family:'Sora',sans-serif;font-weight:700;font-size:14px;flex-shrink:0;color:#fff;}
     .section-title-text h2{font-family:'Sora',sans-serif;font-size:17px;font-weight:600;color:var(--text);line-height:1;}
@@ -92,7 +94,7 @@
     .word-count.over{color:var(--danger);}
     .equipo-nota{font-size:12px;color:var(--text-dim);margin-top:6px;font-style:italic;}
     footer{position:relative;z-index:1;text-align:center;padding:24px;font-size:12px;color:var(--text-dim);border-top:1px solid var(--border);}
-    @media(max-width:640px){header{padding:16px 20px;}main{padding:32px 16px 60px;}.section-card{padding:24px 20px;}.user-info-grid{grid-template-columns:1fr;}.equipment-display .eq-grid{grid-template-columns:1fr 1fr;}}
+    @media(max-width:640px){header{padding:14px 16px;}main{padding:32px 16px 60px;}.section-card{padding:24px 20px;}.user-info-grid{grid-template-columns:1fr;}.equipment-display .eq-grid{grid-template-columns:1fr 1fr;}}
 
     /* ── Overlay de éxito post-registro ── */
     .success-overlay{display:none;position:fixed;inset:0;z-index:100;background:rgba(100,110,130,.60);backdrop-filter:blur(10px);align-items:center;justify-content:center;flex-direction:column;gap:24px;}
@@ -137,19 +139,42 @@
       padding:8px 18px;font-family:'Sora',sans-serif;font-size:13px;
       font-weight:600;cursor:pointer;transition:var(--transition);}
     .btn-corregir:hover{opacity:.88;transform:translateY(-1px);}
-    /* ── CORRECCIONES RESPONSIVE ── */
+    /* ══ RESPONSIVE CONSOLIDADO ══ */
     @media(max-width:768px){
       header{padding:18px 28px;}
       .header-title{font-size:11px;}
+      main{padding:32px 20px 60px;}
+    }
+    @media(max-width:640px){
+      header{padding:14px 16px;}
+      main{padding:24px 14px 50px;}
+      .page-title{font-size:22px;}
+      .section-card{padding:22px 16px;}
+      .user-info-grid{grid-template-columns:1fr;}
+      .equipment-display .eq-grid{grid-template-columns:1fr 1fr;}
+      .tarjetas-grid{grid-template-columns:1fr;}
+      .success-box{padding:32px 20px;margin:0 12px;}
+      .btn{width:100%;justify-content:center;}
+      .total-tarjetas-box{flex-direction:column;align-items:flex-start;gap:6px;}
+      .total-value{font-size:22px;}
+      .tarjetas-asignadas-ref{font-size:12px;}
     }
     @media(max-width:480px){
       .header-title{display:none;}
-    }
-    @media(max-width:640px){
-      .success-box{padding:32px 24px;margin:0 16px;}
+      .header-badge span:not(.dot){display:none;}
+      .header-badge{padding:8px 10px;}
+      .page-title{font-size:19px;}
+      .page-subtitle{font-size:13px;}
+      .section-num{width:30px;height:30px;font-size:12px;}
+      .section-title-text h2{font-size:15px;}
+      .section-card{padding:18px 14px;}
+      .eq-grid{grid-template-columns:1fr 1fr;}
+      .val{font-size:13px;}
     }
     @media(max-width:380px){
       .equipment-display .eq-grid{grid-template-columns:1fr;}
+      .section-card{padding:16px 12px;}
+      input,select,textarea{font-size:14px;padding:10px 12px;}
     }
   </style>
 </head>
@@ -334,8 +359,28 @@
   }
 
   function setLoading(btn, on) { btn.classList.toggle('loading', on); btn.disabled = on; }
-  function enableSection(id)  { const e=$( id); e.classList.remove('disabled'); e.classList.add('active'); }
-  function disableSection(id) { const e=$(id); e.classList.add('disabled'); e.classList.remove('active'); }
+  // Muestra SOLO la sección indicada y oculta las demás
+  function showSection(id) {
+    ['sec1','sec2','sec3'].forEach(s => {
+      const el = $(s);
+      if (s === id) {
+        el.classList.remove('disabled');
+        el.classList.add('active');
+        // Scroll suave a la sección visible
+        setTimeout(() => el.scrollIntoView({ behavior:'smooth', block:'start' }), 50);
+      } else {
+        el.classList.add('disabled');
+        el.classList.remove('active');
+      }
+    });
+  }
+  // Aliases para compatibilidad con código existente
+  function enableSection(id)  { showSection(id); }
+  function disableSection(id) {
+    const el = $(id);
+    el.classList.add('disabled');
+    el.classList.remove('active');
+  }
 
   async function api(action, payload={}) {
     const params = new URLSearchParams({ action, ...payload });
@@ -397,6 +442,11 @@
     } catch(err) {
       showAlert('danger', 'No se pudo conectar con el servidor. Verifique la URL de Apps Script.');
     }
+    // Garantizar que solo sec1 está visible al cargar
+    ['sec2','sec3'].forEach(s => {
+      $(s).classList.add('disabled');
+      $(s).classList.remove('active');
+    });
   }
 
   // ── Poblar combo de equipos filtrando los activos ──
@@ -454,8 +504,11 @@
       $('user-info-panel').style.display = 'none';
       state.selectedUser = null;
     }
-    disableSection('sec2');
-    disableSection('sec3');
+    // Al cambiar usuario, mostrar solo sec1
+    ['sec2','sec3'].forEach(s => {
+      $(s).classList.add('disabled');
+      $(s).classList.remove('active');
+    });
   });
 
   $('btn-sec1').addEventListener('click', async function() {
@@ -466,14 +519,12 @@
       if (data.estado === 'ACTIVO') {
         state.registroActivo = data.registro;
         populateSeccion3(data.registro);
-        disableSection('sec2');
-        enableSection('sec3');
+        showSection('sec3');
         showAlert('warning', `${state.selectedUser.nombres} ya tiene un equipo asignado. Proceda con la devolución.`);
       } else {
         state.registroActivo = null;
-        cargarEquiposDisponibles(); // filtrar equipos activos al momento
-        enableSection('sec2');
-        disableSection('sec3');
+        cargarEquiposDisponibles();
+        showSection('sec2');
         showAlert('success', 'Usuario sin equipo activo. Proceda con la asignación.');
       }
     } catch(err) {

@@ -196,6 +196,12 @@
       <label for="inp-tarjetas">Cantidad de Tarjetas Asignadas</label>
       <input type="number" id="inp-tarjetas" min="0" placeholder="Ingrese cantidad numérica" />
     </div>
+    <div class="form-group" id="group-ubicacion" style="display:none;">
+      <label for="sel-ubicacion">Ubicación</label>
+      <select id="sel-ubicacion">
+        <option value="">— Seleccione una ubicación —</option>
+      </select>
+    </div>
     <div style="margin-top:24px;">
       <button class="btn btn-primary" id="btn-sec2" disabled>
         <div class="loader"></div>
@@ -269,7 +275,7 @@
   // ══════════════════════════════════════════════
   //  CONFIG – reemplaze con su URL de Apps Script
   // ══════════════════════════════════════════════
-  const API_URL = 'https://script.google.com/macros/s/AKfycbygEgZs6iMfpkUbqcagpLFQ4Ocvxp9gcd7LORQeeR2xkS88XVSLZyYnHw0mF8aheFL3MQ/exec';
+  const API_URL = 'https://script.google.com/macros/s/AKfycbxDjYm5w4XwJ3n7i-erZVSL0ZgD2T0nN5qmWq2Ug24PqVJYztevMvk_RPs77lBzmJ2k/exec';
 
   let state = { selectedUser: null, registroActivo: null };
   const $ = id => document.getElementById(id);
@@ -315,10 +321,11 @@
   async function init() {
     try {
       // Cargamos usuarios, equipos y equipos activos en paralelo
-      const [users, todosEquipos, equiposActivos] = await Promise.all([
+      const [users, todosEquipos, equiposActivos, ubicaciones] = await Promise.all([
         api('getUsuarios'),
         api('getEquipos'),
-        api('getEquiposActivos')
+        api('getEquiposActivos'),
+        api('getUbicaciones')
       ]);
 
       // Poblar usuarios
@@ -339,6 +346,7 @@
       // Guardar IDs de equipos en uso para filtrar al habilitar sección 2
       window._equiposActivos = new Set(equiposActivos.map(e => String(e.ID_EQUIPO)));
       window._todosEquipos   = todosEquipos;
+      window._ubicaciones    = ubicaciones;
 
     } catch(err) {
       showAlert('danger', 'No se pudo conectar con el servidor. Verifique la URL de Apps Script.');
@@ -366,6 +374,18 @@
     $('nota-equipos').textContent = bloqueados > 0
       ? `${bloqueados} equipo(s) no disponible(s) por estar asignados actualmente.`
       : '';
+  }
+
+  // ── Poblar combo de ubicaciones ──
+  function cargarUbicaciones() {
+    const sel = $('sel-ubicacion');
+    sel.innerHTML = '<option value="">— Seleccione una ubicación —</option>';
+    (window._ubicaciones || []).forEach(u => {
+      const opt = document.createElement('option');
+      opt.value       = u.UBICACION;
+      opt.textContent = u.UBICACION;
+      sel.appendChild(opt);
+    });
   }
 
   // ══════════════════════════════════════════════
@@ -425,12 +445,28 @@
     checkSec2();
   });
 
-  $('inp-tarjetas').addEventListener('input', checkSec2);
+  $('inp-tarjetas').addEventListener('input', function() {
+    const tieneValor = this.value !== '' && Number(this.value) >= 0;
+    const grupUbic   = $('group-ubicacion');
+    if (tieneValor) {
+      // Mostrar y poblar combo de ubicación
+      cargarUbicaciones();
+      grupUbic.style.display = 'block';
+    } else {
+      grupUbic.style.display = 'none';
+      $('sel-ubicacion').value = '';
+    }
+    checkSec2();
+  });
+
+  $('sel-ubicacion').addEventListener('change', checkSec2);
 
   function checkSec2() {
-    const eq = $('sel-equipo').value;
-    const tk = $('inp-tarjetas').value;
-    $('btn-sec2').disabled = !(eq && tk !== '' && Number(tk) >= 0);
+    const eq   = $('sel-equipo').value;
+    const tk   = $('inp-tarjetas').value;
+    const ubic = $('sel-ubicacion').value;
+    // Botón activo solo cuando: equipo + tarjetas + ubicación
+    $('btn-sec2').disabled = !(eq && tk !== '' && Number(tk) >= 0 && ubic);
   }
 
   $('btn-sec2').addEventListener('click', async function() {
@@ -454,6 +490,7 @@
       id_equipo:     $('sel-equipo').value,
       nombre_equipo: eqOpt.dataset.nombre,
       tarjetas:      $('inp-tarjetas').value,
+      ubicacion:     $('sel-ubicacion').value,
     };
     try {
       await api('registrarAsignacion', payload);

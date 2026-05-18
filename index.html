@@ -106,6 +106,17 @@
     .countdown{font-family:'Sora',sans-serif;font-size:13px;color:var(--stg-accent);margin-top:18px;}
 
 
+    /* ── Sección 1: fila cédula ── */
+    .cedula-row{display:flex;gap:10px;align-items:stretch;}
+    .cedula-row input{flex:1;min-width:0;}
+    .cedula-row .btn{flex-shrink:0;padding:12px 22px;white-space:nowrap;}
+    .cedula-error{display:flex;align-items:center;gap:8px;margin-top:8px;
+      padding:10px 14px;background:var(--danger-bg);border:1px solid rgba(220,38,38,.3);
+      border-radius:var(--radius-sm);font-size:13px;color:var(--danger);font-weight:500;}
+    @media(max-width:480px){
+      .cedula-row{flex-direction:column;}
+      .cedula-row .btn{width:100%;}
+    }
     /* ── Sección 3: grid de tarjetas devolución ── */
     .tarjetas-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:4px;}
     .total-tarjetas-box{display:flex;align-items:center;justify-content:space-between;background:rgba(74,85,104,.08);border:1px solid rgba(74,85,104,.20);border-radius:var(--radius-sm);padding:14px 20px;margin-bottom:20px;}
@@ -201,19 +212,35 @@
       <div class="section-num">1</div>
       <div class="section-title-text">
         <h2>Identificación de Usuario</h2>
-        <p>Seleccione el usuario para continuar</p>
+        <p>Ingrese la cédula del usuario para continuar</p>
       </div>
       <span class="status-badge active">Activo</span>
     </div>
     <div class="form-group">
-      <label for="sel-user">Usuario</label>
-      <select id="sel-user"><option value="">— Seleccione un usuario —</option></select>
+      <label for="inp-cedula">Número de Cédula</label>
+      <div class="cedula-row">
+        <input type="text" id="inp-cedula"
+               inputmode="numeric"
+               maxlength="20"
+               placeholder="Ingrese el número de cédula"
+               autocomplete="off" />
+        <button class="btn btn-primary" id="btn-buscar-cedula" disabled>
+          <div class="loader"></div>
+          <span class="btn-text">Buscar</span>
+        </button>
+      </div>
+      <div id="cedula-error" class="cedula-error" style="display:none;">
+        <span>&#9888;</span> Usuario no existe. Verifique el número ingresado.
+      </div>
     </div>
+
     <div id="user-info-panel" style="display:none;">
       <div class="user-info-grid">
         <div class="info-item" style="grid-column:1/-1;">
-          <label>ID Usuario (verificar ceros iniciales)</label>
-          <div class="info-value" id="u-id-display" style="font-family:'Courier New',monospace;font-size:18px;font-weight:700;letter-spacing:.08em;color:var(--stg-accent);">—</div>
+          <label>Cédula confirmada</label>
+          <div class="info-value" id="u-id-display"
+               style="font-family:'Courier New',monospace;font-size:18px;font-weight:700;
+                      letter-spacing:.08em;color:var(--stg-accent);">—</div>
         </div>
         <div class="info-item"><label>Apellidos</label><div class="info-value" id="u-apellidos">—</div></div>
         <div class="info-item"><label>Nombres</label><div class="info-value" id="u-nombres">—</div></div>
@@ -221,7 +248,8 @@
         <div class="info-item"><label>Usuario Sistema</label><div class="info-value" id="u-sistema">—</div></div>
       </div>
     </div>
-    <div style="margin-top:24px;">
+
+    <div id="group-btn-sec1" style="display:none;margin-top:24px;">
       <button class="btn btn-primary" id="btn-sec1" disabled>
         <div class="loader"></div>
         <span class="btn-text">Aceptar y Verificar Estado</span>
@@ -343,12 +371,20 @@
 </div>
 
 <script>
+(function() {
+'use strict';
   // ══════════════════════════════════════════════
-  //  CONFIG – reemplaze con su URL de Apps Script
+  //  CONFIG
   // ══════════════════════════════════════════════
-  const API_URL = 'https://script.google.com/macros/s/AKfycbxDjYm5w4XwJ3n7i-erZVSL0ZgD2T0nN5qmWq2Ug24PqVJYztevMvk_RPs77lBzmJ2k/exec';
+  const API_URL    = 'https://script.google.com/macros/s/AKfycbwjh-45voymKC8cAvD_Vy_SyH5QPTMBd0xyt_9-xHSevRXsbGZhO3O0nWmXpHThB3r89w/exec';
+  // Token de seguridad: debe coincidir con APP_TOKEN en Code.gs
+  const APP_TOKEN  = 'STG_2025_SEC';
 
-  let state = { selectedUser: null, registroActivo: null };
+  // Estado local — NO expuesto en window
+  let state        = { selectedUser: null, registroActivo: null, tarjetasAsignadas: 0 };
+  let _todosEquipos   = [];
+  let _equiposActivos = new Set();
+  let _ubicaciones    = [];
   const $ = id => document.getElementById(id);
 
   function showAlert(type, msg) {
@@ -383,7 +419,8 @@
   }
 
   async function api(action, payload={}) {
-    const params = new URLSearchParams({ action, ...payload });
+    // M-02: incluir token en cada petición para que el backend lo valide
+    const params = new URLSearchParams({ action, _tk: APP_TOKEN, ...payload });
     const r = await fetch(`${API_URL}?${params}`);
     if (!r.ok) throw new Error('Error de red');
     const data = await r.json();
@@ -412,32 +449,16 @@
   async function init() {
     try {
       // Cargamos usuarios, equipos y equipos activos en paralelo
-      const [users, todosEquipos, equiposActivos, ubicaciones] = await Promise.all([
-        api('getUsuarios'),
+      const [todosEquipos, equiposActivos, ubicaciones] = await Promise.all([
         api('getEquipos'),
         api('getEquiposActivos'),
         api('getUbicaciones')
       ]);
 
-      // Poblar usuarios
-      const selUser = $('sel-user');
-      users.forEach(u => {
-        const opt = document.createElement('option');
-        // Forzar string: guardar con comilla invisible para que
-        // URLSearchParams no lo trate como número
-        opt.value = String(u.ID_USUARIO);
-        opt.textContent = `${u.ID_USUARIO} – ${u.APELLIDOS} ${u.NOMBRES}`;
-        opt.dataset.apellidos = u.APELLIDOS;
-        opt.dataset.nombres   = u.NOMBRES;
-        opt.dataset.cargo     = u.CARGO;
-        opt.dataset.sistema   = u.USUARIO_SISTEMA;
-        selUser.appendChild(opt);
-      });
-
-      // Guardar IDs de equipos en uso para filtrar al habilitar sección 2
-      window._equiposActivos = new Set(equiposActivos.map(e => String(e.ID_EQUIPO)));
-      window._todosEquipos   = todosEquipos;
-      window._ubicaciones    = ubicaciones;
+      // Guardar en variables locales del closure
+      _equiposActivos = new Set(equiposActivos.map(e => String(e.ID_EQUIPO)));
+      _todosEquipos   = todosEquipos;
+      _ubicaciones    = ubicaciones;
 
     } catch(err) {
       showAlert('danger', 'No se pudo conectar con el servidor. Verifique la URL de Apps Script.');
@@ -454,8 +475,8 @@
     const sel = $('sel-equipo');
     sel.innerHTML = '<option value="">— Seleccione un equipo —</option>';
 
-    const disponibles = (window._todosEquipos || []).filter(
-      e => !window._equiposActivos.has(String(e.ID_EQUIPO))
+    const disponibles = (_todosEquipos || []).filter(
+      e => !_equiposActivos.has(String(e.ID_EQUIPO))
     );
 
     disponibles.forEach(e => {
@@ -466,7 +487,7 @@
       sel.appendChild(opt);
     });
 
-    const bloqueados = (window._todosEquipos || []).length - disponibles.length;
+    const bloqueados = (_todosEquipos || []).length - disponibles.length;
     $('nota-equipos').textContent = bloqueados > 0
       ? `${bloqueados} equipo(s) no disponible(s) por estar asignados actualmente.`
       : '';
@@ -476,7 +497,7 @@
   function cargarUbicaciones() {
     const sel = $('sel-ubicacion');
     sel.innerHTML = '<option value="">— Seleccione una ubicación —</option>';
-    (window._ubicaciones || []).forEach(u => {
+    (_ubicaciones || []).forEach(u => {
       const opt = document.createElement('option');
       opt.value       = u.UBICACION;
       opt.textContent = u.UBICACION;
@@ -487,29 +508,88 @@
   // ══════════════════════════════════════════════
   //  SECCIÓN 1
   // ══════════════════════════════════════════════
-  $('sel-user').addEventListener('change', function() {
-    const opt = this.options[this.selectedIndex];
-    $('btn-sec1').disabled = !this.value;
-    if (this.value) {
-      $('u-apellidos').textContent = opt.dataset.apellidos || '—';
-      $('u-nombres').textContent   = opt.dataset.nombres   || '—';
-      $('u-cargo').textContent     = opt.dataset.cargo     || '—';
-      $('u-sistema').textContent   = opt.dataset.sistema   || '—';
-      // Mostrar el ID exacto (con ceros) para confirmación visual
-      const idDisplay = document.getElementById('u-id-display');
-      if (idDisplay) idDisplay.textContent = String(this.value).trim();
-      $('user-info-panel').style.display = 'block';
-      state.selectedUser = { id: String(this.value).trim(), ...opt.dataset };
+  // ── Input cédula: habilitar botón Buscar al escribir ──
+  $('inp-cedula').addEventListener('input', function() {
+    const val = this.value.trim();
+    $('btn-buscar-cedula').disabled = val.length === 0;
+    // Si borra la cédula, limpiar el panel y ocultar sección Aceptar
+    if (!val) {
+      resetSec1();
     } else {
-      $('user-info-panel').style.display = 'none';
-      state.selectedUser = null;
+      $('cedula-error').style.display = 'none';
     }
-    // Al cambiar usuario, mostrar solo sec1
-    ['sec2','sec3'].forEach(s => {
-      $(s).classList.add('disabled');
-      $(s).classList.remove('active');
-    });
   });
+
+  // ── Enter en el campo cédula dispara la búsqueda ──
+  $('inp-cedula').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && this.value.trim()) {
+      e.preventDefault();
+      $('btn-buscar-cedula').click();
+    }
+  });
+
+  // ── Botón Buscar: consulta getUsuarioByCedula al backend ──
+  $('btn-buscar-cedula').addEventListener('click', async function() {
+    const cedula = $('inp-cedula').value.trim();
+    if (!cedula) return;
+
+    setLoading(this, true);
+    $('cedula-error').style.display = 'none';
+    $('user-info-panel').style.display = 'none';
+    $('group-btn-sec1').style.display = 'none';
+    $('btn-sec1').disabled = true;
+
+    try {
+      const usuario = await api('getUsuarioByCedula', { cedula });
+
+      if (!usuario || usuario.encontrado === false) {
+        // Usuario no existe — mostrar error y limpiar
+        $('cedula-error').style.display = 'flex';
+        $('inp-cedula').focus();
+        $('inp-cedula').select();
+        state.selectedUser = null;
+      } else {
+        // Usuario encontrado — poblar panel y mostrar botón Aceptar
+        $('u-id-display').textContent = usuario.ID_USUARIO;
+        $('u-apellidos').textContent  = usuario.APELLIDOS  || '—';
+        $('u-nombres').textContent    = usuario.NOMBRES    || '—';
+        $('u-cargo').textContent      = usuario.CARGO      || '—';
+        $('u-sistema').textContent    = usuario.USUARIO_SISTEMA || '—';
+        $('user-info-panel').style.display = 'block';
+        $('group-btn-sec1').style.display  = 'block';
+        $('btn-sec1').disabled = false;
+
+        state.selectedUser = {
+          id:       usuario.ID_USUARIO,
+          apellidos:usuario.APELLIDOS,
+          nombres:  usuario.NOMBRES,
+          cargo:    usuario.CARGO,
+          sistema:  usuario.USUARIO_SISTEMA
+        };
+
+        // Ocultar secciones 2 y 3 al buscar nuevo usuario
+        ['sec2','sec3'].forEach(s => {
+          $(s).classList.add('disabled');
+          $(s).classList.remove('active');
+        });
+      }
+    } catch(err) {
+      $('cedula-error').style.display = 'flex';
+      $('cedula-error').querySelector('span + *') &&
+        ($('cedula-error').textContent = '⚠ Error al consultar. Intente nuevamente.');
+    }
+    setLoading(this, false);
+  });
+
+  // ── Función auxiliar: limpiar Sección 1 al estado inicial ──
+  function resetSec1() {
+    $('user-info-panel').style.display  = 'none';
+    $('group-btn-sec1').style.display   = 'none';
+    $('cedula-error').style.display     = 'none';
+    $('btn-sec1').disabled              = true;
+    $('btn-buscar-cedula').disabled     = true;
+    state.selectedUser                  = null;
+  }
 
   $('btn-sec1').addEventListener('click', async function() {
     setLoading(this, true);
@@ -528,7 +608,7 @@
         showAlert('success', 'Usuario sin equipo activo. Proceda con la asignación.');
       }
     } catch(err) {
-      showAlert('danger', 'Error al verificar estado del usuario: ' + err.message);
+      showAlert('danger', 'No se pudo verificar el estado del usuario. Intente nuevamente.');
     }
     setLoading(this, false);
   });
@@ -596,7 +676,7 @@
         `El equipo ${payload.nombre_equipo} fue asignado a ${payload.nombres} ${payload.apellidos} exitosamente.`
       );
     } catch(err) {
-      showAlert('danger', 'Error al registrar la asignación: ' + err.message);
+      showAlert('danger', 'No se pudo registrar la asignación. Verifique los datos e intente nuevamente.');
       setLoading(this, false);
     }
   });
@@ -611,9 +691,12 @@
     $('dev-fecha').textContent         = reg.FECHA_ASIGNACION          || '—';
     $('dev-hora').textContent          = reg.HORA_ASIGNACION           || '—';
     $('dev-estado').textContent        = reg.ESTADO                    || 'ACTIVO';
-    // Guardar tarjetas asignadas en state para validación
+    // Guardar tarjetas asignadas en state para validación y límite de inputs
     state.tarjetasAsignadas = Number(reg.CANTIDAD_TARJETAS) || 0;
     $('ref-tarjetas-asignadas').textContent = state.tarjetasAsignadas;
+    // M-03: limitar max de cada campo al total asignado
+    $('inp-tarjetas-nousadas').max = state.tarjetasAsignadas;
+    $('inp-tarjetas-error').max    = state.tarjetasAsignadas;
     // Ocultar banner de error al cargar
     $('banner-validacion').classList.remove('show');
     $('total-tarjetas-dev').parentElement.classList.remove('ok','error');
@@ -715,12 +798,42 @@
         `El equipo fue devuelto correctamente. Estado actualizado a DEVUELTO.`
       );
     } catch(err) {
-      showAlert('danger', 'Error al registrar la devolución: ' + err.message);
+      showAlert('danger', 'No se pudo registrar la devolución. Verifique los datos e intente nuevamente.');
       setLoading(this, false);
     }
   });
 
   init();
+
+  // R-02: timeout de inactividad — regresa a Sección 1 tras 5 min sin interacción
+  let _inactivityTimer;
+  function resetInactivityTimer() {
+    clearTimeout(_inactivityTimer);
+    _inactivityTimer = setTimeout(() => {
+      // Solo actuar si estamos en sec2 o sec3 (no interrumpir si el usuario está en sec1)
+      const sec2Active = !$('sec2').classList.contains('disabled');
+      const sec3Active = !$('sec3').classList.contains('disabled');
+      if (sec2Active || sec3Active) {
+        showAlert('warning', 'Sesión reiniciada por inactividad. Ingrese la cédula nuevamente.');
+        // Limpiar estado completo
+        state.selectedUser      = null;
+        state.registroActivo    = null;
+        state.tarjetasAsignadas = 0;
+        $('inp-cedula').value   = '';
+        resetSec1();
+        ['sec2','sec3'].forEach(s => { $(s).classList.add('disabled'); $(s).classList.remove('active'); });
+        $('sec1').classList.add('active');
+        $('sec1').scrollIntoView({ behavior:'smooth', block:'start' });
+      }
+    }, 5 * 60 * 1000); // 5 minutos
+  }
+  // Reiniciar el timer en cualquier interacción del usuario
+  ['click','keydown','touchstart','mousemove'].forEach(evt =>
+    document.addEventListener(evt, resetInactivityTimer, { passive: true })
+  );
+  resetInactivityTimer();
+
+})(); // fin IIFE
 </script>
 </body>
 </html>

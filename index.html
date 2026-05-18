@@ -110,6 +110,33 @@
     .total-label{font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;}
     .total-value{font-family:'Sora',sans-serif;font-size:26px;font-weight:700;color:var(--text);min-width:60px;text-align:right;}
     @media(max-width:480px){.tarjetas-grid{grid-template-columns:1fr;}}
+    /* ── Validación total tarjetas ── */
+    .total-tarjetas-box{transition:all .25s ease;}
+    .total-tarjetas-box.ok{background:rgba(0,168,130,.10);border-color:rgba(0,168,130,.35);}
+    .total-tarjetas-box.ok .total-label{color:var(--success);}
+    .total-tarjetas-box.ok .total-value{color:var(--success);}
+    .total-tarjetas-box.error{background:rgba(220,38,38,.10);border-color:rgba(220,38,38,.40);}
+    .total-tarjetas-box.error .total-label{color:var(--danger);}
+    .total-tarjetas-box.error .total-value{color:var(--danger);}
+    .tarjetas-asignadas-ref{display:flex;align-items:center;justify-content:space-between;
+      padding:8px 14px;background:rgba(74,85,104,.06);border-radius:6px;margin-bottom:14px;
+      font-size:13px;color:var(--text-muted);}
+    .tarjetas-asignadas-ref strong{font-family:'Sora',sans-serif;font-size:15px;color:var(--text);}
+    /* Banner error de validación */
+    .validacion-banner{display:none;align-items:flex-start;gap:14px;
+      background:rgba(220,38,38,.08);border:1px solid rgba(220,38,38,.35);
+      border-radius:var(--radius-sm);padding:16px 18px;margin-bottom:20px;}
+    .validacion-banner.show{display:flex;}
+    .validacion-banner .vb-icon{font-size:22px;flex-shrink:0;margin-top:1px;}
+    .validacion-banner .vb-body{flex:1;}
+    .validacion-banner .vb-title{font-family:'Sora',sans-serif;font-weight:700;
+      font-size:14px;color:var(--danger);margin-bottom:4px;}
+    .validacion-banner .vb-msg{font-size:13px;color:var(--text-muted);line-height:1.5;margin-bottom:10px;}
+    .btn-corregir{display:inline-flex;align-items:center;gap:6px;
+      background:var(--danger);color:#fff;border:none;border-radius:6px;
+      padding:8px 18px;font-family:'Sora',sans-serif;font-size:13px;
+      font-weight:600;cursor:pointer;transition:var(--transition);}
+    .btn-corregir:hover{opacity:.88;transform:translateY(-1px);}
     /* ── CORRECCIONES RESPONSIVE ── */
     @media(max-width:768px){
       header{padding:18px 28px;}
@@ -231,6 +258,25 @@
         <div class="eq-item"><label>Estado</label><div class="val" style="color:var(--warning);" id="dev-estado">ACTIVO</div></div>
       </div>
     </div>
+    <!-- Referencia visual: tarjetas asignadas -->
+    <div class="tarjetas-asignadas-ref">
+      <span>Tarjetas Asignadas (a cuadrar)</span>
+      <strong id="ref-tarjetas-asignadas">—</strong>
+    </div>
+
+    <!-- Banner de error de validación -->
+    <div class="validacion-banner" id="banner-validacion">
+      <span class="vb-icon">⚠</span>
+      <div class="vb-body">
+        <div class="vb-title">Información de Tarjetas Incorrecta</div>
+        <div class="vb-msg" id="banner-validacion-msg">
+          La suma de Tarjetas No Utilizadas + Tarjetas Error debe ser igual
+          al total de tarjetas asignadas.
+        </div>
+        <button class="btn-corregir" id="btn-corregir">↩ Corregir</button>
+      </div>
+    </div>
+
     <div class="tarjetas-grid">
       <div class="form-group">
         <label for="inp-tarjetas-nousadas">Tarjetas No Utilizadas</label>
@@ -514,6 +560,12 @@
     $('dev-fecha').textContent         = reg.FECHA_ASIGNACION          || '—';
     $('dev-hora').textContent          = reg.HORA_ASIGNACION           || '—';
     $('dev-estado').textContent        = reg.ESTADO                    || 'ACTIVO';
+    // Guardar tarjetas asignadas en state para validación
+    state.tarjetasAsignadas = Number(reg.CANTIDAD_TARJETAS) || 0;
+    $('ref-tarjetas-asignadas').textContent = state.tarjetasAsignadas;
+    // Ocultar banner de error al cargar
+    $('banner-validacion').classList.remove('show');
+    $('total-tarjetas-dev').parentElement.classList.remove('ok','error');
     // Los campos de devolución se limpian al cargar la sección
     $('inp-tarjetas-nousadas').value = '';
     $('inp-tarjetas-error').value    = '';
@@ -528,8 +580,55 @@
     return total;
   }
 
-  $('inp-tarjetas-nousadas').addEventListener('input', function() { calcularTotal(); checkSec3(); });
-  $('inp-tarjetas-error').addEventListener('input',    function() { calcularTotal(); checkSec3(); });
+  function validarTarjetas() {
+    const noUsadas  = Number($('inp-tarjetas-nousadas').value) || 0;
+    const error     = Number($('inp-tarjetas-error').value)    || 0;
+    const total     = noUsadas + error;
+    const asignadas = state.tarjetasAsignadas || 0;
+    const box       = $('total-tarjetas-dev').parentElement;
+
+    // Solo validar si ambos campos tienen algún valor
+    const hayValores = $('inp-tarjetas-nousadas').value !== '' ||
+                       $('inp-tarjetas-error').value    !== '';
+
+    if (!hayValores || asignadas === 0) {
+      box.classList.remove('ok', 'error');
+      $('banner-validacion').classList.remove('show');
+      return null; // sin validar aún
+    }
+
+    if (total === asignadas) {
+      box.classList.add('ok');
+      box.classList.remove('error');
+      $('banner-validacion').classList.remove('show');
+      return true;  // ✅ cuadra
+    } else {
+      box.classList.add('error');
+      box.classList.remove('ok');
+      $('banner-validacion-msg').textContent =
+        `La suma (${noUsadas} + ${error} = ${total}) debe ser igual a las tarjetas asignadas (${asignadas}). Por favor corrija los valores.`;
+      $('banner-validacion').classList.add('show');
+      return false; // ❌ no cuadra
+    }
+  }
+
+  $('inp-tarjetas-nousadas').addEventListener('input', function() {
+    calcularTotal(); validarTarjetas(); checkSec3();
+  });
+  $('inp-tarjetas-error').addEventListener('input', function() {
+    calcularTotal(); validarTarjetas(); checkSec3();
+  });
+
+  // Botón Corregir: limpia los campos y mantiene la sección activa
+  $('btn-corregir').addEventListener('click', function() {
+    $('inp-tarjetas-nousadas').value = '';
+    $('inp-tarjetas-error').value    = '';
+    $('total-tarjetas-dev').textContent = '0';
+    $('total-tarjetas-dev').parentElement.classList.remove('ok','error');
+    $('banner-validacion').classList.remove('show');
+    $('btn-sec3').disabled = true;
+    $('inp-tarjetas-nousadas').focus();
+  });
 
   $('inp-obs').addEventListener('input', function() {
     const words = this.value.trim().split(/\s+/).filter(w=>w).length;
@@ -543,9 +642,9 @@
     const noUsadas = $('inp-tarjetas-nousadas').value;
     const error    = $('inp-tarjetas-error').value;
     const words    = $('inp-obs').value.trim().split(/\s+/).filter(w=>w).length;
-    // Habilitar si al menos uno de los campos tiene valor >= 0 y palabras OK
-    const camposOk = (noUsadas !== '' || error !== '') && words <= 200;
-    $('btn-sec3').disabled = !camposOk;
+    const valido   = validarTarjetas(); // true=cuadra, false=no, null=incompleto
+    // Botón activo SOLO si la suma cuadra exactamente y palabras OK
+    $('btn-sec3').disabled = !(valido === true && words <= 200);
   }
 
   $('btn-sec3').addEventListener('click', async function() {

@@ -313,7 +313,7 @@
     </div>
     <!-- Referencia visual: tarjetas asignadas -->
     <div class="tarjetas-asignadas-ref">
-      <span>Tarjetas Asignadas (a cuadrar)</span>
+      <span>Total Asignado (Entregadas Exitosamente + Stock Fisico Final debe cuadrar)</span>
       <strong id="ref-tarjetas-asignadas">—</strong>
     </div>
 
@@ -321,9 +321,9 @@
     <div class="validacion-banner" id="banner-validacion">
       <span class="vb-icon">⚠</span>
       <div class="vb-body">
-        <div class="vb-title">Información de Tarjetas Incorrecta</div>
+        <div class="vb-title">Informacion de Tarjetas Incorrecta</div>
         <div class="vb-msg" id="banner-validacion-msg">
-          La suma de Tarjetas No Utilizadas + Tarjetas Error debe ser igual
+          La suma de Tarjetas Entregadas Exitosamente + Stock Fisico Final debe ser igual
           al total de tarjetas asignadas.
         </div>
         <button class="btn-corregir" id="btn-corregir">↩ Corregir</button>
@@ -332,11 +332,11 @@
 
     <div class="tarjetas-grid">
       <div class="form-group">
-        <label for="inp-tarjetas-nousadas">Tarjetas No Utilizadas</label>
+        <label for="inp-tarjetas-nousadas">Tarjetas Entregadas Exitosamente</label>
         <input type="number" id="inp-tarjetas-nousadas" min="0" placeholder="0" />
       </div>
       <div class="form-group">
-        <label for="inp-tarjetas-error">Tarjetas Error</label>
+        <label for="inp-tarjetas-error">Stock Fisico Final</label>
         <input type="number" id="inp-tarjetas-error" min="0" placeholder="0" />
       </div>
     </div>
@@ -376,7 +376,7 @@
   // ══════════════════════════════════════════════
   //  CONFIG
   // ══════════════════════════════════════════════
-  const API_URL    = 'https://script.google.com/macros/s/AKfycby_u4Ox-2amK5Q2U6fxFhwt7rfPtEiUNwyPXNcMEG5iY-t7LZ0FR3hZo3UI2_uZzMlTiw/exec';
+  const API_URL    = 'https://script.google.com/macros/s/AKfycbze0wd1u7w_3jQpJbb0fVu1b_L7Q4dvmhBYoY_VUb6KREuRFbiaEwl8IeXdO880qqdOjQ/exec';
   // Token de seguridad: debe coincidir con APP_TOKEN en Code.gs
   const APP_TOKEN  = 'STG_2025_SEC';
 
@@ -765,7 +765,7 @@
       box.classList.add('error');
       box.classList.remove('ok');
       $('banner-validacion-msg').textContent =
-        `La suma (${noUsadas} + ${error} = ${total}) debe ser igual a las tarjetas asignadas (${asignadas}). Por favor corrija los valores.`;
+        `La suma (Entregadas Exitosamente: ${noUsadas} + Stock Fisico Final: ${error} = ${total}) debe ser igual a las tarjetas asignadas (${asignadas}). Por favor corrija los valores.`;
       $('banner-validacion').classList.add('show');
       return false; // ❌ no cuadra
     }
